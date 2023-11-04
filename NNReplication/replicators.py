@@ -2,6 +2,7 @@
 import torch.nn as nn
 import torch
 
+
 class RegenerationBase(nn.Module):
     def __init__(self):
         super().__init__()
@@ -42,7 +43,7 @@ class SimpleModel(RegenerationBase):
     def predict_own_weights(self, shift_by=0):
         num_params = len(self.target_params)
         one_hot_coordinates = torch.eye(num_params)
-        weights = self.forward(one_hot_coordinates) + shift_by
+        weights = self.forward(one_hot_coordinates.to(self.projection.device)) + shift_by
         return weights.squeeze().tolist()
 
     @torch.no_grad()
@@ -59,7 +60,7 @@ class SimpleModel(RegenerationBase):
 
     def predict_param_by_idx(self, idx):
         num_params = len(self.target_params)
-        one_hot_coordinate = torch.eye(num_params)[idx]
+        one_hot_coordinate = torch.eye(num_params)[idx].to(self.projection.device)
         return self.forward(one_hot_coordinate)
 # %%
 
@@ -68,12 +69,12 @@ if __name__ == "__main__":
 
     from time import time
     s = time()
-    new_weights = model.predict_own_weigths(shift_by=0.1)
+    new_weights = model.predict_own_weights(shift_by=0.1)
     print(time() - s)
     print(new_weights[:3])
 
     s = time()
-    new_weights_2 = model.predict_own_weights2(shift_by=0.1)
+    new_weights_2 = model.predict_own_weights(shift_by=0.1)
     print(time() - s)
     print(new_weights_2[:3])
 # %%
