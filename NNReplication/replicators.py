@@ -74,12 +74,16 @@ class SimpleModel(RegenerationBase):
                 "length of weights must match length of self.target_params"
             )
 
-        for i in range(len(weights)):
-            weight = weights[i]
-            weight /= shrink
-            self.target_params[i].fill_(
-                weight
-            )  # this also fills orignal params. (self.target_params holds references)
+        i = 0
+        for param in self.parameters():
+            flat_param = param.view(-1)
+            for p in range(flat_param.size(0)):
+                weight = weights[i]
+                weight = weight / shrink
+                flat_param[p] = weight
+                self.target_params[i] = torch.tensor(weight)
+                i += 1
+        assert i == len(self.target_params)
 
     def predict_param_by_idx(self, idx):
         num_params = len(self.target_params)
