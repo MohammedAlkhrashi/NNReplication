@@ -23,11 +23,8 @@ def plot_corr(model: replicators.RegenerationBase,shift_by,shrink=1,name=""):
     for pmatrix in model.parameters():
         for p in pmatrix.view(-1):
             params.append(p.data.clone())
-    num_params = len(params)
-    indices = torch.arange(num_params)
-    predictions = (model.predict_param_by_idx(indices).clone() + shift_by) / shrink
 
-    predictions = predictions.squeeze().tolist()
+    predictions = model.predict_own_weights(shift_by,shrink)
     weights = [param.item() for param in params]
     
     correlation_coefficient, p_value = scipy.stats.pearsonr(predictions, weights)
@@ -63,9 +60,6 @@ def show_plot(plt, filename):
     else:
         plt.show()  
     plt.close()  
-# %%
-
-# %%
 from scipy.stats import entropy
 def compute_entropy(weights):
     weights_shifted = weights + abs(np.min(weights))
@@ -73,14 +67,14 @@ def compute_entropy(weights):
     return entropy(probability_distribution)
 
 
-def plot_family_of_networks(num_networks, regen_steps, shift_by,bias=True,layer_size=70,act="ReLU",shrink=1):
+def plot_family_of_networks(num_networks, regen_steps, shift_by,bias=True,layer_size=70,act="ReLU",shrink=1,batch_size=64):
     model_norms = []
     final_weights = []  
     mse_values = []  
 
     for _ in tqdm(range(num_networks)):
         model = replicators.SimpleModel(layers_size=layer_size,bias=bias,act=act).to(DEVICE)
-        norms = regeneration_process(model, regen_steps, shift_by,batch_size=256,shrink=shrink)
+        norms = regeneration_process(model, regen_steps, shift_by,batch_size=batch_size,shrink=shrink)
         if norms[-1] != np.inf and not np.isnan(norms[-1]):  # only models that don't blow up
             model_norms.append((model, norms))
             weights_vector = torch.nn.utils.parameters_to_vector(model.target_params).detach().clone().cpu().numpy()
@@ -165,22 +159,19 @@ def plot_family_of_networks(num_networks, regen_steps, shift_by,bias=True,layer_
 
 
 SAVE=True
-shift_by = 0.025
+shift_by = 0.001
 shrink = 1
-num_networks=50
+num_networks=20
 regen_steps=5
-shift_by=shift_by
-layer_size=60
+layer_size=316
 act="ReLU"
-bias=True
-shrink=shrink
+bias=False
+batch_size = 2**4
 
-networks_data = plot_family_of_networks(num_networks=num_networks, regen_steps=regen_steps, shift_by=shift_by,layer_size=layer_size,act=act,bias=bias,shrink=shrink)
+networks_data = plot_family_of_networks(num_networks=num_networks, regen_steps=regen_steps, shift_by=shift_by,layer_size=layer_size,act=act,bias=bias,shrink=shrink,batch_size=batch_size)
 networks_sorted_by_entropy = sorted(networks_data, key=lambda x: x[2])
 networks_sorted_by_mse = sorted(networks_data, key=lambda x: x[1])
-# %%
 
-# %%
 net = networks_sorted_by_mse[0]
 filename = f'{num_networks}_networks_shift_{shift_by}_size_{layer_size}_act_{act}_best_mse_corr.png'
 plot_corr(net[0][0],shift_by,name=filename)
@@ -190,7 +181,6 @@ plt.hist(torch.vstack(net[0][0].target_params).numpy())
 
 filename = f'{num_networks}_networks_shift_{shift_by}_size_{layer_size}_act_{act}_best_mse_dist.png'
 show_plot(plt,filename)
-# %%
 net = networks_sorted_by_mse[-1]
 filename = f'{num_networks}_networks_shift_{shift_by}_size_{layer_size}_act_{act}_worst_mse_corr.png'
 plot_corr(net[0][0],shift_by,name=filename)
@@ -220,19 +210,19 @@ def regeneration_process_noise(model: replicators.RegenerationBase, regen_steps,
         # new_weights[0] = 0.2
         # new_weights[1] = 0.5
         # new_weights[2] = 0.3
-        new_weights[1] = 1
+        # new_weights[1] = 1
         model.set_weights(new_weights,shrink)
     return norms
 shift_by = 0.001
 shrink = 1
-layers_size=50
-bias=False
-act="Tanh"
+layers_size=316
+bias=True
+act="ReLU"
+batch = 2**4
 model_1 = replicators.SimpleModel(layers_size=layers_size,bias=bias,act=act).to(DEVICE)
-norms_1 = regeneration_process_noise(model_1, regen_steps=10,shift_by=shift_by,shrink=shrink)
+norms_1 = regeneration_process_noise(model_1, regen_steps=5,shift_by=shift_by,shrink=shrink,batch_size=batch)
 
-filename = f'networks_shift_{shift_by}_size_{layer_size}_act_{act}_corr_with_noise.png'
-plot_corr(model_1,shift_by=shift_by,name=filename)
+SAVE = False
 
 plt.figure(figsize=(10, 6))
 plt.plot(norms_1, label=f'Model 1 (size:{len(model_1.target_params)})', marker='o')
@@ -243,6 +233,10 @@ plt.legend()
 plt.grid(True)
 filename = f'networks_shift_{shift_by}_size_{layer_size}_act_{act}_norms_with_noise.png'
 show_plot(plt,filename)
+# %%
+
+filename = f'networks_shift_{shift_by}_size_{layers_size}_act_{act}_corr_with_noise.png'
+plot_corr(model_1,shift_by=shift_by,name=filename)
 
 plt.hist(torch.vstack(model_1.target_params).numpy())
 filename = f'networks_shift_{shift_by}_size_{layer_size}_act_{act}_dist_with_noise.png'

@@ -46,21 +46,30 @@ class SimpleModel(RegenerationBase):
         return x
             
     @torch.no_grad()
-    def predict_own_weights(self, shift_by=0, batch_size=32):
+    def predict_own_weights(self, shift_by=0, shrink=1, batch_size=32):
         num_params = len(self.target_params)
         num_batches = (num_params + batch_size - 1) // batch_size
 
+        
+        max_batch_size = min(batch_size, num_params)
+        batch_one_hot = torch.zeros((max_batch_size, num_params), device=self.projection.device)
+        indices = torch.arange(max_batch_size, device=self.projection.device)
+
         all_weights = []
 
-        for batch_idx in range(num_batches):
+        for batch_idx in tqdm(range(num_batches)):
             start_idx = batch_idx * batch_size
             end_idx = min(start_idx + batch_size, num_params)
-            
-            batch_one_hot = torch.zeros((end_idx - start_idx, num_params), device=self.projection.device)
-            for i in range(end_idx - start_idx):
-                batch_one_hot[i, start_idx + i] = 1
 
-            batch_weights = self.forward(batch_one_hot) + shift_by
+            current_batch_size = end_idx - start_idx
+            if current_batch_size != max_batch_size:
+                batch_one_hot = batch_one_hot[:current_batch_size, :]
+                indices = indices[:current_batch_size]
+
+            batch_one_hot.zero_()
+            batch_one_hot[torch.arange(current_batch_size), start_idx + indices] = 1
+
+            batch_weights = self.forward(batch_one_hot) / shrink + shift_by
             all_weights.append(batch_weights)
 
         weights = torch.cat(all_weights, dim=0).squeeze().tolist()
@@ -89,6 +98,13 @@ class SimpleModel(RegenerationBase):
         num_params = len(self.target_params)
         one_hot_coordinate = torch.eye(num_params)[idx].to(self.projection.device)
         return self.forward(one_hot_coordinate)
+    
+    def reinitialize_model(self):
+        for layer in self.modules():
+            if isinstance(layer, nn.Linear):
+                layer.reset_parameters()
+
+
 # %%
 
 if __name__ == "__main__":
